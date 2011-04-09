@@ -46,7 +46,7 @@ import pybrain.datasets.sequential as bd
 print "preparing network ...",
 nn = bn.RecurrentNetwork()
 nn.addInputModule(LinearLayer(9, name="in"))
-nn.addModule(LSTMLayer(9, name="hidden"))
+nn.addModule(LSTMLayer(6, name="hidden"))
 nn.addOutputModule(LinearLayer(2, name="out"))
 nn.addConnection(bc.FullConnection(nn["in"], nn["hidden"], name="c1"))
 nn.addConnection(bc.FullConnection(nn["hidden"], nn["out"], name="c2"))
@@ -63,11 +63,16 @@ def getRandomSeq(seqlen, ratevarlimit=0.2):
     gen = SeqGenerator()
     for i in xrange(seqlen):
         if(float(count) / (i+1) < random.uniform(0.0,ratevarlimit)):
-            if gen.lastNum + gen.lastLetter == "1A": c = "X"
-            elif gen.lastNum + gen.lastLetter == "2B": c = "Y"
-            elif gen.lastNum == "1": c = "A"
-            elif gen.lastNum == "2": c = "B"
+            # ignore lastNumber - make it only 50% of the cases right -> to point out the difference in learning
+            if gen.lastLetter == "A": c = "X"
+            elif gen.lastLetter == "B": c = "Y"
+            elif gen.lastNum != "": c = random.choice("AB")
             else: c = random.choice("12")
+            #if gen.lastNum + gen.lastLetter == "1A": c = "X"
+            #elif gen.lastNum + gen.lastLetter == "2B": c = "Y"
+            #elif gen.lastNum == "1": c = "A"
+            #elif gen.lastNum == "2": c = "B"
+            #else: c = random.choice("12")
         else:
             c = random.choice("123ABCXYZ")
         s += c
