@@ -54,14 +54,15 @@ nn.addRecurrentConnection(bc.FullConnection(nn["hidden"], nn["hidden"], name="c3
 nn.sortModules()
 print "done"
 
+
 import random
 
-def getRandomSeq(seqlen):
+def getRandomSeq(seqlen, ratevarlimit=0.2):
     s = ""
     count = 0
     gen = SeqGenerator()
     for i in xrange(seqlen):
-        if(float(count) / (i+1) < random.uniform(0.0,0.2)):
+        if(float(count) / (i+1) < random.uniform(0.0,ratevarlimit)):
             if gen.lastNum + gen.lastLetter == "1A": c = "X"
             elif gen.lastNum + gen.lastLetter == "2B": c = "Y"
             elif gen.lastNum == "1": c = "A"
@@ -79,20 +80,21 @@ def outputAsVec(c):
     if c is None: return (0.0,0.0)
     else: return pybrain.utilities.one_to_n("LR".index(c), 2)
 
-def addSequence(dataset, seqlen):
+def addSequence(dataset, seqlen, ratevarlimit):
     dataset.newSequence()
-    s = getRandomSeq(seqlen)
+    s = getRandomSeq(seqlen, ratevarlimit)
     for i,o in zip(s, SeqGenerator().nextSeq(s)):
         dataset.addSample(inputAsVec(i), outputAsVec(o))
 
-def generateData(seqlen = 100, nseq = 20):
+def generateData(seqlen = 100, nseq = 20, ratevarlimit = 0.2):
     dataset = bd.SequentialDataSet(9, 2)
-    for i in xrange(nseq): addSequence(dataset, seqlen)
+    for i in xrange(nseq): addSequence(dataset, seqlen, ratevarlimit)
     return dataset
 
 #l = bl.QLambda()
-trainer = bt.RPropMinusTrainer(module=nn)
+#trainer = bt.RPropMinusTrainer(module=nn)
 #trainer = bt.BackpropTrainer( nn, momentum=0.9, learningrate=0.00001 )
+trainer = bt.BackpropTrainer(nn)
 
 from pybrain.tools.validation import ModuleValidator
 
@@ -107,7 +109,7 @@ def getSeqOutputFromNN(module, seq):
     outputs = ""
     module.reset()
     for i in xrange(len(seq)):
-        output = module.activate(seq[i][0])
+        output = module.activate(inputAsVec(seq[i]))
         l,r = output
         l,r = l > 0.5, r > 0.5
         if l and not r: c = "L"
@@ -119,16 +121,16 @@ def getSeqOutputFromNN(module, seq):
 
 
 # carry out the training
-for i in xrange(100):
-    trndata = generateData()
-    tstdata = generateData()
+while True:
+    trndata = generateData(nseq = 20, ratevarlimit = random.uniform(0.0,0.3))
+    tstdata = generateData(nseq = 20)
     trainer.setData(trndata)
     trainer.train()
     trnresult = 100. * (ModuleValidator.MSE(nn, trndata))
     tstresult = 100. * (ModuleValidator.MSE(nn, tstdata))
     print "train error: %5.2f%%" % trnresult, ",  test error: %5.2f%%" % tstresult
 
-    s = getRandomSeq(100)
+    s = getRandomSeq(100, ratevarlimit=random.uniform(0.0,1.0))
     print " real:", seqStr(s)
     print "   nn:", getSeqOutputFromNN(nn, s)
     
