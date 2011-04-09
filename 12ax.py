@@ -38,7 +38,7 @@ from pybrain.structure.modules import BiasUnit, SigmoidLayer, LinearLayer, LSTML
 import pybrain.structure.networks as bn
 import pybrain.structure.connections as bc
 import pybrain.rl.learners.valuebased as bl
-import pybrain.supervised.trainers.rprop as bt
+import pybrain.supervised as bt
 import pybrain.datasets.sequential as bd
 
 #nn = bs.buildNetwork(9, 9, 2, hiddenclass=LSTMLayer)
@@ -47,7 +47,7 @@ print "preparing network ...",
 nn = bn.RecurrentNetwork()
 nn.addInputModule(LinearLayer(9, name="in"))
 nn.addModule(LSTMLayer(9, name="hidden"))
-nn.addOutputModule(SoftmaxLayer(2, name="out"))
+nn.addOutputModule(LinearLayer(2, name="out"))
 nn.addConnection(bc.FullConnection(nn["in"], nn["hidden"], name="c1"))
 nn.addConnection(bc.FullConnection(nn["hidden"], nn["out"], name="c2"))
 nn.addRecurrentConnection(bc.FullConnection(nn["hidden"], nn["hidden"], name="c3"))
@@ -91,7 +91,8 @@ def generateData(seqlen = 100, nseq = 20):
     return dataset
 
 #l = bl.QLambda()
-trainer = bt.RPropMinusTrainer(module=nn, verbose=True)
+trainer = bt.RPropMinusTrainer(module=nn)
+#trainer = bt.BackpropTrainer( nn, momentum=0.9, learningrate=0.00001 )
 
 from pybrain.tools.validation import ModuleValidator
 
@@ -108,6 +109,6 @@ for i in xrange(100):
     tstdata = generateData()
     trainer.setData(trndata)
     trainer.train()
-    trnresult = 100. * (1.0-ModuleValidator.MSE(nn, trndata))
-    tstresult = 100. * (1.0-ModuleValidator.MSE(nn, tstdata))
+    trnresult = 100. * (ModuleValidator.MSE(nn, trndata))
+    tstresult = 100. * (ModuleValidator.MSE(nn, tstdata))
     print "train error: %5.2f%%" % trnresult, ",  test error: %5.2f%%" % tstresult
