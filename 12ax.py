@@ -101,7 +101,22 @@ def userthread():
     from IPython.Shell import IPShellEmbed
     ipshell = IPShellEmbed()
     ipshell()
-thread.start_new_thread(userthread, ())
+#thread.start_new_thread(userthread, ())
+
+def getSeqOutputFromNN(module, seq):
+    outputs = ""
+    module.reset()
+    for i in xrange(len(seq)):
+        output = module.activate(seq[i][0])
+        l,r = output
+        l,r = l > 0.5, r > 0.5
+        if l and not r: c = "L"
+        elif not l and r: c = "R"
+        elif not l and not r: c = ""
+        else: c = "?"
+        outputs += c
+    return outputs
+
 
 # carry out the training
 for i in xrange(100):
@@ -112,3 +127,8 @@ for i in xrange(100):
     trnresult = 100. * (ModuleValidator.MSE(nn, trndata))
     tstresult = 100. * (ModuleValidator.MSE(nn, tstdata))
     print "train error: %5.2f%%" % trnresult, ",  test error: %5.2f%%" % tstresult
+
+    s = getRandomSeq(100)
+    print " real:", seqStr(s)
+    print "   nn:", getSeqOutputFromNN(nn, s)
+    
