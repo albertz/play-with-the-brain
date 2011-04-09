@@ -91,9 +91,9 @@ def generateData(seqlen = 100, nseq = 20):
     return dataset
 
 #l = bl.QLambda()
-trainer = bt.RPropMinusTrainer(module=nn)
+trainer = bt.RPropMinusTrainer(module=nn, verbose=True)
 
-from pybrain.tools.validation import testOnSequenceData
+from pybrain.tools.validation import ModuleValidator
 
 import thread
 def userthread():
@@ -106,7 +106,8 @@ thread.start_new_thread(userthread, ())
 for i in xrange(100):
     trndata = generateData()
     tstdata = generateData()
-    trainer.trainOnDataset(trndata)
-    trnresult = 100. * (1.0-testOnSequenceData(nn, trndata))
-    tstresult = 100. * (1.0-testOnSequenceData(nn, tstdata))
+    trainer.setData(trndata)
+    trainer.train()
+    trnresult = 100. * (1.0-ModuleValidator.MSE(nn, trndata))
+    tstresult = 100. * (1.0-ModuleValidator.MSE(nn, tstdata))
     print "train error: %5.2f%%" % trnresult, ",  test error: %5.2f%%" % tstresult
