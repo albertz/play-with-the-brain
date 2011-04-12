@@ -13,7 +13,7 @@ class SeqGenerator:
             seq = self.lastNum + self.lastLetter + nextInput
             if seq in ["1AX","2BY"]: return "R"
             return "L"
-        return None
+        return ""
 
     def next(self, nextInput):
         out = self.peek(nextInput)
@@ -28,7 +28,7 @@ class SeqGenerator:
         return [ self.next(c) for c in nextInputs ]
 
     def nextStr(self, nextInputs):
-        return "".join([ self.next(c) or "" for c in nextInputs ])
+        return "".join([ self.next(c) for c in nextInputs ])
 
 def seqStr(s): return SeqGenerator().nextStr(s)
 
@@ -79,7 +79,7 @@ def getRandomSeq(seqlen, ratevarlimit=0.2):
 import pybrain.utilities
 def inputAsVec(c): return pybrain.utilities.one_to_n("123ABCXYZ".index(c), 9)
 def outputAsVec(c):
-    if c is None: return (0.0,0.0)
+    if c == "": return (0.0,0.0)
     else: return pybrain.utilities.one_to_n("LR".index(c), 2)
 
 def addSequence(dataset, seqlen, ratevarlimit):
@@ -93,14 +93,78 @@ def generateData(seqlen = 100, nseq = 20, ratevarlimit = 0.2):
     for i in xrange(nseq): addSequence(dataset, seqlen, ratevarlimit)
     return dataset
 
+def getActionFromNNOutput(nnoutput):
+    l,r = nnoutput
+    l,r = l > 0.5, r > 0.5
+    if l and not r: c = "L"
+    elif not l and r: c = "R"
+    elif not l and not r: c = ""
+    else: c = "?"
+    return c
 
-import pybrain.rl.learners.valuebased as bl
+def getSeqOutputFromNN(module, seq):
+    outputs = ""
+    module.reset()
+    for i in xrange(len(seq)):
+        output = module.activate(inputAsVec(seq[i]))
+        c = getActionFromNNOutput(output)
+        outputs += c
+    return outputs
+
+
+
+import itertools, operator
+import scipy
 import pybrain.supervised as bt
 
-#l = bl.QLambda()
+# We just use bt.BackpropTrainer as a base.
+# We ignore the target of the dataset though.
+class ReinforcedTrainer(bt.BackpropTrainer):
+    def __init__(self, module, rewarder, *args, **kwargs):
+        bt.BackpropTrainer.__init__(self, module, *args, **kwargs)
+        self.rewarder = rewarder # func (seq,last module-output) -> reward in [0,1]
+
+    def _calcDerivs(self, seq):
+        """Calculate error function and backpropagate output errors to yield
+        the gradient."""
+        self.module.reset()
+        for sample in seq:
+            self.module.activate(sample[0])
+        error = 0.
+        ponderation = 0.
+        for offset, sample in reversed(list(enumerate(seq))):
+            subseq = itertools.imap(operator.itemgetter(0), seq[:offset+1])
+            outerr2 = 1.0 - self.rewarder(subseq, self.module.outputbuffer[offset])
+
+            target = sample[1]
+            outerr = target - self.module.outputbuffer[offset]
+            outerr2 = scipy.array([outerr2] * self.module.outdim)
+            #print "derivs:", offset, ":", outerr, outerr2
+            outerr = outerr2
+            
+            error += 0.5 * sum(outerr ** 2)
+            ponderation += len(target)
+            # FIXME: the next line keeps arac from producing NaNs. I don't
+            # know why that is, but somehow the __str__ method of the
+            # ndarray class fixes something,
+            str(outerr)
+            self.module.backActivate(outerr)
+
+        return error, ponderation
+
+
 #trainer = bt.RPropMinusTrainer(module=nn)
 #trainer = bt.BackpropTrainer( nn, momentum=0.9, learningrate=0.00001 )
-trainer = bt.BackpropTrainer(nn)
+#trainer = bt.BackpropTrainer()
+
+def errorFunc(seq, nnoutput):
+    seq = [ "123ABCXYZ"[pybrain.utilities.n_to_one(sample)] for sample in seq ]
+    lastout = outputAsVec(SeqGenerator().nextSeq(seq)[-1])
+    diff = scipy.array(nnoutput) - scipy.array(lastout)
+    err = 0.5 * scipy.sum(diff ** 2)
+    return err
+
+trainer = ReinforcedTrainer(module=nn, rewarder=rewardFunc)
 
 from pybrain.tools.validation import ModuleValidator
 
@@ -111,25 +175,12 @@ def userthread():
     ipshell()
 #thread.start_new_thread(userthread, ())
 
-def getSeqOutputFromNN(module, seq):
-    outputs = ""
-    module.reset()
-    for i in xrange(len(seq)):
-        output = module.activate(inputAsVec(seq[i]))
-        l,r = output
-        l,r = l > 0.5, r > 0.5
-        if l and not r: c = "L"
-        elif not l and r: c = "R"
-        elif not l and not r: c = ""
-        else: c = "?"
-        outputs += c
-    return outputs
-
 
 # carry out the training
 while True:
     trndata = generateData(nseq = 20, ratevarlimit = random.uniform(0.0,0.3))
     tstdata = generateData(nseq = 20)
+    
     trainer.setData(trndata)
     trainer.train()
     trnresult = 100. * (ModuleValidator.MSE(nn, trndata))
