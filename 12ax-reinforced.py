@@ -115,10 +115,12 @@ def rewardFunc(seq, nnoutput):
     cl,cr = outputAsVec(SeqGenerator().nextSeq(seq)[-1])
     nl,nr = nnoutput
     reward = 0.0
-    if nl > 0.5 and cl > 0.5: reward += 0.5
-    if nl < 0.5 and cl < 0.5: reward += 0.5
-    if nr > 0.5 and cr > 0.5: reward += 0.5
-    if nr < 0.5 and cr < 0.5: reward += 0.5
+    if 1.5 > nl > 0.5 and cl > 0.5: reward += 0.5
+    if -0.5 < nl < 0.5 and cl < 0.5: reward += 0.5
+    if 1.5 > nr > 0.5 and cr > 0.5: reward += 0.5
+    if -0.5 < nr < 0.5 and cr < 0.5: reward += 0.5
+    if nl < -0.5 or nl > 1.5: reward -= 0.5
+    if nr < 0.5 or nr > 1.5: reward -= 0.5
     return reward
 
 import pybrain.rl.environments as be
@@ -143,15 +145,22 @@ class Task12AX(be.EpisodicTask):
 
 from pybrain.optimization import *
 from pybrain.tools.validation import ModuleValidator
+from numpy.random import randn
 
-maxEvals = 10000
+maxLearningSteps = 10
 thetask = Task12AX()
+tstdata = generateData(nseq = 20)
+blackboxoptimmethod = ES
+
+def mutator():
+    nn._params += randn(nn.paramdim) * random.uniform(0.0,1.0)
+nn.mutate = mutator
+
 
 while True:
-    #print 'NES', ExactNES(thetask, nn, maxEvaluations=maxEvals).learn()
-    print 'ES', ES(thetask, nn, maxEvaluations=maxEvals).learn()
+    nn, value = blackboxoptimmethod(thetask, nn, maxLearningSteps=maxLearningSteps, elitism=True).learn()
+    print "best evaluation:", value
     
-    tstdata = generateData(nseq = 20)
     tstresult = 100. * (ModuleValidator.MSE(nn, tstdata))
     print "test error: %5.2f%%" % tstresult
 
