@@ -117,6 +117,8 @@ import itertools, operator
 import scipy
 import pybrain.supervised as bt
 
+# The magic is happening here!
+# See the code about how we are calculating the error.
 # We just use bt.BackpropTrainer as a base.
 # We ignore the target of the dataset though.
 class ReinforcedTrainer(bt.BackpropTrainer):
@@ -139,6 +141,8 @@ class ReinforcedTrainer(bt.BackpropTrainer):
             target = sample[1]
             outerr = target - self.module.outputbuffer[offset] # real err. if we are reinforcing, we are not allowed to use this
 
+            # NOTE: We use the information/knowledge that the output must be in {0,1}.
+            # This is a very strict assumption and the whole trick might not work when we generalize it.
             # normalize NN l,r output to {0.0,1.0}
             nl,nr = self.module.outputbuffer[offset]
             nl,nr = nl > 0.5, nr > 0.5
