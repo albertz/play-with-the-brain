@@ -111,12 +111,22 @@ def getSeqOutputFromNN(module, seq):
         outputs += c
     return outputs
 
+def rewardFunc(seq, nnoutput):
+    cl,cr = outputAsVec(SeqGenerator().nextSeq(seq)[-1])
+    nl,nr = nnoutput
+    reward = 0.0
+    if nl > 0.5 and cl > 0.5: reward += 0.5
+    if nl < 0.5 and cl < 0.5: reward += 0.5
+    if nr > 0.5 and cr > 0.5: reward += 0.5
+    if nr < 0.5 and cr < 0.5: reward += 0.5
+    return reward
+
 import pybrain.rl.environments as be
 class Task12AX(be.EpisodicTask):
     def __init__(self): self.reset()
     #def setMaxLength(self, n): pass #ignore
     def getReward(self):
-        return 0
+        return rewardFunc(self.seq[:self.t], self.actions[-1])
     def reset(self):
         self.cumreward = 0
         self.t = 0
@@ -125,54 +135,27 @@ class Task12AX(be.EpisodicTask):
     def performAction(self, action):
         self.t += 1
         self.actions.append(action)
+        self.addReward()
     def isFinished(self):
         return len(self.actions) >= len(self.seq)
     def getObservation(self):
         return inputAsVec(self.seq[self.t])
 
-thetask = Task12AX()
-print 'NES', ExactNES(thetask, nn, maxEvaluations=maxEvals).learn()
-
-
-import itertools, operator
-import scipy
-import pybrain.supervised as bt
-import pybrain.rl.learners.learner as bl
-import pybrain.optimization as bo
-
-#trainer = bt.RPropMinusTrainer(module=nn)
-#trainer = bt.BackpropTrainer( nn, momentum=0.9, learningrate=0.00001 )
-trainer = bt.BackpropTrainer()
-
-def errorFunc(seq, nnoutput):
-    seq = [ "123ABCXYZ"[pybrain.utilities.n_to_one(sample)] for sample in seq ]
-    lastout = outputAsVec(SeqGenerator().nextSeq(seq)[-1])
-    diff = scipy.array(nnoutput) - scipy.array(lastout)
-    err = 0.5 * scipy.sum(diff ** 2)
-    return err
-
+from pybrain.optimization import *
 from pybrain.tools.validation import ModuleValidator
 
-import thread
-def userthread():
-    from IPython.Shell import IPShellEmbed
-    ipshell = IPShellEmbed()
-    ipshell()
-#thread.start_new_thread(userthread, ())
+maxEvals = 10000
+thetask = Task12AX()
 
-
-# carry out the training
 while True:
-    trndata = generateData(nseq = 20, ratevarlimit = random.uniform(0.0,0.3))
-    tstdata = generateData(nseq = 20)
+    #print 'NES', ExactNES(thetask, nn, maxEvaluations=maxEvals).learn()
+    print 'ES', ES(thetask, nn, maxEvaluations=maxEvals).learn()
     
-    trainer.setData(trndata)
-    trainer.train()
-    trnresult = 100. * (ModuleValidator.MSE(nn, trndata))
+    tstdata = generateData(nseq = 20)
     tstresult = 100. * (ModuleValidator.MSE(nn, tstdata))
-    print "train error: %5.2f%%" % trnresult, ",  test error: %5.2f%%" % tstresult
+    print "test error: %5.2f%%" % tstresult
 
     s = getRandomSeq(100, ratevarlimit=random.uniform(0.0,1.0))
     print " real:", seqStr(s)
     print "   nn:", getSeqOutputFromNN(nn, s)
-    
+
