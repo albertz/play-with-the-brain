@@ -134,11 +134,20 @@ class ReinforcedTrainer(bt.BackpropTrainer):
         ponderation = 0.
         for offset, sample in reversed(list(enumerate(seq))):
             subseq = itertools.imap(operator.itemgetter(0), seq[:offset+1])
-            outerr2 = 1.0 - self.rewarder(subseq, self.module.outputbuffer[offset])
+            reward = self.rewarder(subseq, self.module.outputbuffer[offset])
 			
             target = sample[1]
-            outerr = target - self.module.outputbuffer[offset]
-            outerr2 = scipy.array([outerr2] * self.module.outdim)
+            outerr = target - self.module.outputbuffer[offset] # real err. if we are reinforcing, we are not allowed to use this
+
+            # normalize NN l,r output to {0.0,1.0}
+            nl,nr = self.module.outputbuffer[offset]
+            nl,nr = nl > 0.5, nr > 0.5
+            nl,nr = nl and 1.0 or 0.0, nr and 1.0 or 0.0
+            # guess target l,r
+            gl = nl * reward + (1.0-nl) * (1.0-reward)
+            gr = nr * reward + (1.0-nr) * (1.0-reward)
+            
+            outerr2 = (gl,gr) - self.module.outputbuffer[offset]
             #print "derivs:", offset, ":", outerr, outerr2
             outerr = outerr2
             
@@ -157,12 +166,16 @@ class ReinforcedTrainer(bt.BackpropTrainer):
 #trainer = bt.BackpropTrainer( nn, momentum=0.9, learningrate=0.00001 )
 #trainer = bt.BackpropTrainer()
 
-def errorFunc(seq, nnoutput):
+def rewardFunc(seq, nnoutput):
     seq = [ "123ABCXYZ"[pybrain.utilities.n_to_one(sample)] for sample in seq ]
-    lastout = outputAsVec(SeqGenerator().nextSeq(seq)[-1])
-    diff = scipy.array(nnoutput) - scipy.array(lastout)
-    err = 0.5 * scipy.sum(diff ** 2)
-    return err
+    cl,cr = outputAsVec(SeqGenerator().nextSeq(seq)[-1])
+    nl,nr = nnoutput
+    reward = 0.0
+    if nl > 0.5 and cl > 0.5: reward += 0.5
+    if nl < 0.5 and cl < 0.5: reward += 0.5
+    if nr > 0.5 and cr > 0.5: reward += 0.5
+    if nr < 0.5 and cr < 0.5: reward += 0.5
+    return reward
 
 trainer = ReinforcedTrainer(module=nn, rewarder=rewardFunc)
 
