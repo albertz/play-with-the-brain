@@ -64,6 +64,22 @@ class MemoryBackend:
 		else: subject = attrib = value = 0
 		return (subject,attrib,value)
 
+# unused atm
+class MemoryBackend2:
+	def __init__(self):
+		self.dict = {} # int32 -> int32
+	def get(self, ptr):
+		if ptr in self.dict: return self.dict[ptr]
+		return 0
+	def set(self, ptr, value):
+		self.dict[ptr] = value
+	def execPrimitive(self, primitive, ptr, value):
+		if primitive == 1: value = self.get(ptr)
+		elif primitive == 2: self.set(ptr, value)
+		else: ptr = value = 0
+		return (ptr,value)
+
+
 def netOutToAction(netOut):
 	assert len(netOut) == PrimitiveDim + ObjectDim * 3
 	primitive = _numFromBinaryVec(netOut, 0, PrimitiveDim-1)
