@@ -26,15 +26,91 @@ def _numToBinaryVec(num, bits):
 	if len(vec) < bits: vec += (0,) * (bits - len(vec))
 	return vec
 
-class Program:
-	def __init__(self):
-		self.code = []
-	def eval(self): pass
-
 ObjectDim = 16
 PrimitiveCount = 4
 PrimitiveDim = _highestBit(PrimitiveCount)
 MemoryActivationDim = ObjectDim * 3
+ActionDim = PrimitiveDim + ObjectDim * 3
+
+
+def netOutToPrimitive(netOut):
+	assert len(netOut) == ActionDim
+	primitive = _numFromBinaryVec(netOut, 0, PrimitiveDim-1)
+	subject = _numFromBinaryVec(netOut, PrimitiveDim, PrimitiveDim+ObjectDim-1)
+	attrib = _numFromBinaryVec(netOut, PrimitiveDim+ObjectDim, PrimitiveDim+ObjectDim*2-1)
+	value = _numFromBinaryVec(netOut, PrimitiveDim+ObjectDim*2, PrimitiveDim+ObjectDim*3-1)
+	return (primitive,subject,attrib,value)
+
+class Program:
+	class Node:
+		class Action:
+			def execute(self, memory, contextSubject): pass
+		class PrimitiveAction(Action):
+			def __init__(self):
+				self.primitive = 0
+				self.subject = 0
+				self.attrib = 0
+				self.value = 0
+				self.target = 0
+				self.subjectIsLocal = False
+				self.attribIsLocal = False
+				self.valueIsLocal = False
+			def execute(self, memory, contextSubject):
+				subject = self.subject
+				attrib = self.attrib
+				value = self.value
+				if self.subjectIsLocal: subject = memory.get(contextSubject, subject)
+				if self.attribIsLocal: attrib = memory.get(contextSubject, attrib)
+				if self.valueIsLocal: value = memory.get(contextSubject, value)
+				_,_,value = memory.execPrimitive(self.primitive, subject, attrib, value)
+				memory.set(contextSubject,self.target,value)
+		class CallAction(Action):
+			def __init__(self):
+				self.prog = Program()
+				self.context = 0
+			def execute(self, memory, contextSubject):
+				newContextSubject = memory.get(contextSubject, self.context)
+				self.prog.execute(memory, newContextSubject)
+			
+		def __init__(self):
+			self.edges = [] # (check , node)
+			# whereby check is attrib and it checks
+			# if attrib == 0 or (subject,attrib) != 0
+			# whereby subject is current context
+			self.action = Action()
+
+		def uninit(self):
+			if getattr(self, "uniniting", False): return
+			self.uniniting = True
+			for _,node in self.edges: node.uninit()
+			self.edges = []
+			self.action = None
+
+	def __init__(self):
+		self.startnode = None
+
+	def __del__(self):
+		if self.startnode:
+			self.startnode.uninit()
+			self.startnode = None
+
+	@classmethod
+	def Random(cls):
+		prog = cls()
+		
+		return prog
+
+	def execute(self, memory, contextSubject):
+		node = self.startnode
+		while node is not None:
+			node.action.execute(memory, contextSubject)
+			nextnode = None
+			for edgecheck, edgenode in node.edges:
+				if memory.get(contextSubject, edgecheck):
+					nextnode = edgenode
+					break
+			node = nextnode
+
 
 class MemoryBackend:
 	def __init__(self):
@@ -81,11 +157,6 @@ class MemoryBackend2:
 
 
 def netOutToAction(netOut):
-	assert len(netOut) == PrimitiveDim + ObjectDim * 3
-	primitive = _numFromBinaryVec(netOut, 0, PrimitiveDim-1)
-	subject = _numFromBinaryVec(netOut, PrimitiveDim, PrimitiveDim+ObjectDim-1)
-	attrib = _numFromBinaryVec(netOut, PrimitiveDim+ObjectDim, PrimitiveDim+ObjectDim*2-1)
-	value = _numFromBinaryVec(netOut, PrimitiveDim+ObjectDim*2, PrimitiveDim+ObjectDim*3-1)
 	return lambda mem: mem.execPrimitive(primitive, subject, attrib, value)
 
 def memoryOutToNetIn(subject, attrib, value):
