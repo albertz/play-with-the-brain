@@ -198,6 +198,7 @@ class MemoryBackend2:
 
 
 def netOutToAction(netOut):
+	primitive, subject, attrib, value = netOutToPrimitive(netOut)
 	return lambda mem: mem.execPrimitive(primitive, subject, attrib, value)
 
 def memoryOutToNetIn(subject, attrib, value):
