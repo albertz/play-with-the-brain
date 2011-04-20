@@ -42,9 +42,18 @@ def netOutToPrimitive(netOut):
 	return (primitive,subject,attrib,value)
 
 class Program:
+	ProgRandomMaxLocalVars = 10
+	ProgRandomMaxGlobalConsts = 100
+
 	class Node:
 		class Action:
 			def execute(self, memory, contextSubject): pass
+			@classmethod
+			def Random(cls):
+				r = random.random()
+				if r <= 0.2: return Action()
+				elif r <= 0.7: return PrimitiveAction.Random()
+				return CallAction.Random()
 		class PrimitiveAction(Action):
 			def __init__(self):
 				self.primitive = 0
@@ -55,6 +64,17 @@ class Program:
 				self.subjectIsLocal = False
 				self.attribIsLocal = False
 				self.valueIsLocal = False
+			@classmethod
+			def Random(cls):
+				action = cls()
+				action.primitive = random.randint(1,4)
+				action.subjectIsLocal = random.random() <= 0.6
+				action.attribIsLocal = random.random() <= 0.6
+				action.valueIsLocal = random.random() <= 0.6
+				action.subject = random.randint(0, action.subjectIsLocal and ProgRandomMaxLocalVars or ProgRandomMaxGlobalConsts)
+				action.attrib = random.randint(0, action.attribIsLocal and ProgRandomMaxLocalVars or ProgRandomMaxGlobalConsts)
+				action.value = random.randint(0, action.valueIsLocal and ProgRandomMaxLocalVars or ProgRandomMaxGlobalConsts)
+				return action
 			def execute(self, memory, contextSubject):
 				subject = self.subject
 				attrib = self.attrib
@@ -68,6 +88,12 @@ class Program:
 			def __init__(self):
 				self.prog = Program()
 				self.context = 0
+			@classmethod
+			def Random(cls):
+				action = cls()
+				action.prog = Program.Random()
+				action.context = random.randint(0, ProgRandomMaxLocalVars)
+				return action
 			def execute(self, memory, contextSubject):
 				newContextSubject = memory.get(contextSubject, self.context)
 				self.prog.execute(memory, newContextSubject)
@@ -86,6 +112,12 @@ class Program:
 			self.edges = []
 			self.action = None
 
+		@classmethod
+		def Random(cls):
+			node = cls()
+			node.action = Action.Random()
+			return node
+		
 	def __init__(self):
 		self.startnode = None
 
@@ -97,7 +129,16 @@ class Program:
 	@classmethod
 	def Random(cls):
 		prog = cls()
-		
+		N = random.randint(1, 10)
+		nodes = map(lambda _: Node.Random(), [None] * N)
+		for _ in xrange(random.randint(1, 10)):
+			i = random.randint(0, N-1)
+			j = random.randint(0, N-1)
+			checkAttrib = random.randint(0, cls.ProgRandomMaxLocalVars)
+			nodes[i].edges.append((checkAttrib,nodes[j]))
+		for i in xrange(N-1):
+			nodes[i].edges.append((None,nodes[i+1]))
+		prog.startnode = nodes[0]
 		return prog
 
 	def execute(self, memory, contextSubject):
@@ -106,7 +147,7 @@ class Program:
 			node.action.execute(memory, contextSubject)
 			nextnode = None
 			for edgecheck, edgenode in node.edges:
-				if memory.get(contextSubject, edgecheck):
+				if edgecheck is None or memory.get(contextSubject, edgecheck):
 					nextnode = edgenode
 					break
 			node = nextnode
