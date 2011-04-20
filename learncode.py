@@ -42,18 +42,15 @@ def netOutToPrimitive(netOut):
 	return (primitive,subject,attrib,value)
 
 class Program:
-	ProgRandomMaxLocalVars = 10
-	ProgRandomMaxGlobalConsts = 100
-
 	class Node:
 		class Action:
 			def execute(self, memory, contextSubject): pass
 			@classmethod
-			def Random(cls):
+			def Random(cls, rndContext):
 				r = random.random()
 				if r <= 0.2: return Action()
-				elif r <= 0.7: return PrimitiveAction.Random()
-				return CallAction.Random()
+				elif r <= 0.7: return PrimitiveAction.Random(rndContext)
+				return CallAction.Random(rndContext)
 		class PrimitiveAction(Action):
 			def __init__(self):
 				self.primitive = 0
@@ -65,15 +62,15 @@ class Program:
 				self.attribIsLocal = False
 				self.valueIsLocal = False
 			@classmethod
-			def Random(cls):
+			def Random(cls, rndContext):
 				action = cls()
 				action.primitive = random.randint(1,4)
 				action.subjectIsLocal = random.random() <= 0.6
 				action.attribIsLocal = random.random() <= 0.6
 				action.valueIsLocal = random.random() <= 0.6
-				action.subject = random.randint(0, action.subjectIsLocal and ProgRandomMaxLocalVars or ProgRandomMaxGlobalConsts)
-				action.attrib = random.randint(0, action.attribIsLocal and ProgRandomMaxLocalVars or ProgRandomMaxGlobalConsts)
-				action.value = random.randint(0, action.valueIsLocal and ProgRandomMaxLocalVars or ProgRandomMaxGlobalConsts)
+				action.subject = random.randint(0, action.subjectIsLocal and rndContext.ProgRandomMaxLocalVars or rndContext.ProgRandomMaxGlobalConsts)
+				action.attrib = random.randint(0, action.attribIsLocal and rndContext.ProgRandomMaxLocalVars or rndContext.ProgRandomMaxGlobalConsts)
+				action.value = random.randint(0, action.valueIsLocal and rndContext.ProgRandomMaxLocalVars or rndContext.ProgRandomMaxGlobalConsts)
 				return action
 			def execute(self, memory, contextSubject):
 				subject = self.subject
@@ -89,10 +86,10 @@ class Program:
 				self.prog = Program()
 				self.context = 0
 			@classmethod
-			def Random(cls):
+			def Random(cls, rndContext):
 				action = cls()
-				action.prog = Program.Random()
-				action.context = random.randint(0, ProgRandomMaxLocalVars)
+				action.prog = random.choice(rndContext.progPool)
+				action.context = random.randint(0, rndContext.ProgRandomMaxLocalVars)
 				return action
 			def execute(self, memory, contextSubject):
 				newContextSubject = memory.get(contextSubject, self.context)
@@ -113,9 +110,9 @@ class Program:
 			self.action = None
 
 		@classmethod
-		def Random(cls):
+		def Random(cls, rndContext):
 			node = cls()
-			node.action = Action.Random()
+			node.action = Action.Random(rndContext)
 			return node
 		
 	def __init__(self):
@@ -126,11 +123,17 @@ class Program:
 			self.startnode.uninit()
 			self.startnode = None
 
-	@classmethod
-	def Random(cls):
-		prog = cls()
+	class RandomContext:
+		ProgRandomMaxLocalVars = 10
+		ProgRandomMaxGlobalConsts = 100
+		def __init__(self, **kwargs):
+			self.progPool = []
+			for key,value in kwargs:
+				setattr(self, key, value)
+
+	def randomize(self, rndContext):
 		N = random.randint(1, 10)
-		nodes = map(lambda _: Node.Random(), [None] * N)
+		nodes = map(lambda _: Node.Random(rndContext), [None] * N)
 		for _ in xrange(random.randint(1, 10)):
 			i = random.randint(0, N-1)
 			j = random.randint(0, N-1)
@@ -138,9 +141,22 @@ class Program:
 			nodes[i].edges.append((checkAttrib,nodes[j]))
 		for i in xrange(N-1):
 			nodes[i].edges.append((None,nodes[i+1]))
-		prog.startnode = nodes[0]
+		self.startnode = nodes[0]
+
+	@classmethod
+	def Random(cls, rndContext):
+		prog = cls()
+		prog.randomize(rndContext)
 		return prog
 
+	@classmethod
+	def RandomPool(cls, N=50):
+		rndContext = cls.RandomContext()
+		rndContext.progPool = map(lambda _: cls(), [None] * N)
+		for i in xrange(N):
+			rndContext.progPool[i].randomize(rndContext)
+		return rndContext.progPool
+	
 	def execute(self, memory, contextSubject):
 		node = self.startnode
 		while node is not None:
@@ -180,22 +196,6 @@ class MemoryBackend:
 		elif primitive == 3: value = self.create(subject, attrib)
 		else: subject = attrib = value = 0
 		return (subject,attrib,value)
-
-# unused atm
-class MemoryBackend2:
-	def __init__(self):
-		self.dict = {} # int32 -> int32
-	def get(self, ptr):
-		if ptr in self.dict: return self.dict[ptr]
-		return 0
-	def set(self, ptr, value):
-		self.dict[ptr] = value
-	def execPrimitive(self, primitive, ptr, value):
-		if primitive == 1: value = self.get(ptr)
-		elif primitive == 2: self.set(ptr, value)
-		else: ptr = value = 0
-		return (ptr,value)
-
 
 def netOutToAction(netOut):
 	primitive, subject, attrib, value = netOutToPrimitive(netOut)
