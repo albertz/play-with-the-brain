@@ -50,6 +50,7 @@ class Program:
 				r = random.random()
 				if r <= 0.2: return Action()
 				elif r <= 0.7: return PrimitiveAction.Random(rndContext)
+				elif len(rndContext.progPool) == 0: return Action()
 				return CallAction.Random(rndContext)
 		class PrimitiveAction(Action):
 			def __init__(self):
@@ -130,7 +131,11 @@ class Program:
 			self.progPool = []
 			for key,value in kwargs:
 				setattr(self, key, value)
-
+		def generate(self, N=10):
+			progs = map(lambda _: Program.Random(self), [None] * N)
+			self.progPool += progs
+			return progs
+		
 	def randomize(self, rndContext):
 		N = random.randint(1, 10)
 		nodes = map(lambda _: Node.Random(rndContext), [None] * N)
@@ -168,6 +173,7 @@ class Program:
 					break
 			node = nextnode
 
+	def allNodes(self):pass
 
 class MemoryBackend:
 	def __init__(self):
@@ -208,13 +214,68 @@ def memoryOutToNetIn(subject, attrib, value):
 	vec += _numToBinaryVec(value, ObjectDim)
 	return vec
 
+from pybrain.structure.modules import BiasUnit, SigmoidLayer, LinearLayer, LSTMLayer, SoftmaxLayer
+
+# a neural interface has some input and some output
+# which can be used to communicate with a neural network
+class NeuralInterface:
+	class IO(LinearLayer):
+		dim = 0
+		def __init__(self, parent, **kwargs):
+			LinearLayer.__init__(self, self.dim, **kwargs)
+			self.parent = parent
+	Input = IO
+	Output = IO
+	def __init__(self):
+		self.input = self.Input(self)
+		self.output = self.Output(self)
+	
+class MemoryNeuralInterface(NeuralInterface):
+	class Input(NeuralInterface.Input):
+		dim = ActionDim
+		def _forwardImplementation(self, inbuf, outbuf):
+			super(Input, self)._forwardImplementation(inbuf, outbuf)
+			action = netOutToAction(inbuf)
+			memoryOut = action(self.parent.memory)
+			self.parent.output.activate(memoryOutToNetIn(*memoryOut))
+	class Output(NeuralInterface.Output):
+		dim = MemoryActivationDim
+	def __init__(self, memory):
+		NeuralInterface.__init__(self)
+		self.memory = memory
+
+class ProgNeuralInterface(NeuralInterface):
+	class Input(NeuralInterface.Input):
+		dim = 10
+		def _forwardImplementation(self, inbuf, outbuf):
+			super(Input, self)._forwardImplementation(inbuf, outbuf)
+			
+	class Output(NeuralInterface.Output):
+		dim = 10
+	def __init__(self, progPool):
+		NeuralInterface.__init__(self)
+		self.progPool = dict(map(lambda prog: (id(prog), prog), progPool))
+		self.nodes = {}
+		for i,prog in self.progPool.iteritems():
+			pass
+
+class LearnCodeTask:
+	input = [Prog]
+	interfaces = [MemoryNeuralInterface, ProgNeuralInterface]
+	output = None # ....
+	
 class Run:
 	def __init__(self):
 		self.memory = MemoryBackend()
-		self.program = Program()
+		self.progPool = []
 		self.memoryActivation = (0,) * MemoryActivationDim
 	def executeNetOut(self, netOut):
 		action = netOutToAction(netOut)
 		memoryOut = action(self.memory)
 		self.memoryActivation = memoryOutToNetIn(*memoryOut)
+	def learnProg(self, prog):
+		# show how to iterate through whole prog
+		# train to do the same steps in NN
+		# repeat and train to do the same without iterating through the prog
+		pass
 		
