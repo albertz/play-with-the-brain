@@ -176,8 +176,21 @@ class Program:
 	def allNodes(self):pass
 
 class MemoryBackend:
+	ConstZero = 0
+	ConstAttribValue = 2**4 + 1
+	ConstAttribNext = 2*+4 + 2
+	ConstAttribDigit = 2**4 + 100
+	ConstDigit0 = 2**15 + 4
+	ConstDigit1 = 2**15 + 5
+
+	@classmethod
+	def iterConsts(cls):
+		for key in dir(cls):
+			if key.startswith("Const") and type(getattr(cls, key)) is int:
+				yield key, getattr(cls, key)
+
 	def __init__(self):
-		self.baseobjects = []
+		self.baseobjects = map(lambda _,x: x, self.iterConsts())
 		self.dict = {} # int32,int32 -> int32
 		self.objects = set()
 	def get(self, subject, attrib):
@@ -260,6 +273,7 @@ class ProgNeuralInterface(NeuralInterface):
 			pass
 
 class LearnCodeTask:
+	Prog = None
 	input = [Prog]
 	interfaces = [MemoryNeuralInterface, ProgNeuralInterface]
 	output = None # ....
