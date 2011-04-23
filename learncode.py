@@ -2,6 +2,7 @@
 # 2011-04-17
 
 import random
+from itertools import *
 
 def _highestBit(n):
 	c = 0
@@ -62,6 +63,8 @@ class Program:
 				self.subjectIsLocal = False
 				self.attribIsLocal = False
 				self.valueIsLocal = False
+			@staticmethod
+			def RandomObject(): return MemoryBackend.RandomConstInt()
 			@classmethod
 			def Random(cls, rndContext):
 				action = cls()
@@ -69,9 +72,9 @@ class Program:
 				action.subjectIsLocal = random.random() <= 0.6
 				action.attribIsLocal = random.random() <= 0.6
 				action.valueIsLocal = random.random() <= 0.6
-				action.subject = random.randint(0, action.subjectIsLocal and rndContext.ProgRandomMaxLocalVars or rndContext.ProgRandomMaxGlobalConsts)
-				action.attrib = random.randint(0, action.attribIsLocal and rndContext.ProgRandomMaxLocalVars or rndContext.ProgRandomMaxGlobalConsts)
-				action.value = random.randint(0, action.valueIsLocal and rndContext.ProgRandomMaxLocalVars or rndContext.ProgRandomMaxGlobalConsts)
+				action.subject = cls.RandomObject()
+				action.attrib = cls.RandomObject()
+				action.value = cls.RandomObject()
 				return action
 			def execute(self, memory, contextSubject):
 				subject = self.subject
@@ -177,22 +180,33 @@ class Program:
 
 class MemoryBackend:
 	ConstZero = 0
-	ConstAttribValue = 2**4 + 1
-	ConstAttribNext = 2*+4 + 2
-	ConstAttribDigit = 2**4 + 100
-	ConstDigit0 = 2**15 + 4
-	ConstDigit1 = 2**15 + 5
+	ConstAttribIs = 2**4 + 1
+	ConstAttribInSet = 2**4 + 2
+	ConstAttribName = 2**4 + 5
+	ConstAttribValue = 2**4 + 10
+	ConstAttribNext = 2*+4 + 15
+	ConstAttribLen = 2**4 + 100
+	ConstValueType = 2*+15 + 1
+	ConstValueStopMark = 2**15 + 10
+	ConstValueDigit0 = 2**15 + 100
+	ConstValueDigit1 = 2**15 + 101
 
 	@classmethod
-	def iterConsts(cls):
+	def IterConsts(cls):
 		for key in dir(cls):
 			if key.startswith("Const") and type(getattr(cls, key)) is int:
 				yield key, getattr(cls, key)
-
+	@classmethod
+	def IterConstsInt(cls):
+		return imap(lambda (_,x): x, cls.IterConsts())
+	@classmethod
+	def RandomConstInt(cls):
+		return random.choice(list(cls.IterConstsInt()))
+	
 	def __init__(self):
-		self.baseobjects = map(lambda _,x: x, self.iterConsts())
+		self.baseobjects = list(self.IterConstsInt())
 		self.dict = {} # int32,int32 -> int32
-		self.objects = set()
+		self.objects = set(self.baseobjects)
 	def get(self, subject, attrib):
 		if (subject,attrib) in self.dict: return self.dict[(subject,attrib)]
 		return 0
