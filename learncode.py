@@ -347,7 +347,10 @@ class GenericNeuralInterface(NeuralInterface):
 		self.topLevelList = topLevelList
 		self.childsFuncs = childsFuncs # list(obj -> list(obj))
 		self.levelCount = len(childsFuncs) + 1
-		self.additionalInfoFuncs = additionalInfoFuncs or ([lambda _:()] * self.levelCount)
+		additionalInfoFuncs = additionalInfoFuncs or ([None] * self.levelCount)
+		assert len(additionalInfoFuncs) == self.levelCount
+		additionalInfoFuncs = map(lambda f: (f or (lambda _:())), additionalInfoFuncs)
+		self.additionalInfoFuncs = additionalInfoFuncs
 		self.levels = map(lambda _: LevelRepr(), [None] * self.levelCount)
 		super(GenericNeuralInterface, self).__init__()
 		self.resetLevel(0)
@@ -382,30 +385,17 @@ class GenericNeuralInterface(NeuralInterface):
 		return False
 
 
-class ProgNeuralInterface(NeuralInterface):
-	# in:
-	#  id(prog) or 0
-	#  id(node) or 0
-	#  id((check,node)) or 0
-	# out:
-	#  next id(prog)
-	#  next id(node)
-	#  next id((check,node))
-	class Input(NeuralInterface.Input):
-		dim = 10
-		def _forwardImplementation(self, inbuf, outbuf):
-			super(Input, self)._forwardImplementation(inbuf, outbuf)
-
-	class Output(NeuralInterface.Output):
-		dim = 10
-
+class ProgNeuralInterface(GenericNeuralInterface):
+	def childsOfProg(self, prog): return None
+	def childsOfNode(self, node): return None
+	def nodeEdgeInfo(self, nodeEdge): return None
 	def __init__(self, progPool):
-		NeuralInterface.__init__(self)
-		def childsForProg(prog): return prog
-		self.progPool = dict(map(lambda prog: (id(prog), prog), progPool))
-		self.nodes = {}
-		for i,prog in self.progPool.iteritems():
-			pass
+		self.progPool = progPool
+		GenericNeuralInterface.__init__(self,
+		    topLevelList = progPool,
+		    childsFuncs = [self.childsOfProg, self.childsOfNode],
+		    additionalInfoFuncs = [None, None, self.nodeEdgeInfo]
+		    )
 
 class LearnCodeTask:
 	Prog = None
