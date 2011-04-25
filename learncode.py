@@ -277,16 +277,131 @@ class MemoryNeuralInterface(NeuralInterface):
 		NeuralInterface.__init__(self)
 		self.memory = memory
 
+
+# General NN IO. slots:
+# obj <->
+#   NN:
+#     id(obj)
+#     id(left obj) or 0
+#     id(right obj) or 0
+#     additionalInfo(obj)
+
+class GenericNeuralInterface(NeuralInterface):
+	IdVecLen = 32
+	@classmethod
+	def idToVec(cls, id):
+		if id is None: id = 0
+		v = _numToBinaryVec(id, cls.IdVecLen)
+		v = map(float, v)
+		return v
+	@classmethod
+	def vecToId(cls, v):
+		id = _numFromBinaryVec(v)
+		return id
+	@classmethod
+	def objToVec(cls, obj):
+		if obj is None: return idToVec(None)
+		else: return idToVec(id(obj))
+	
+	class Input(NeuralInterface.Input):
+		def __init__(self, parent):
+			self.dim = parent.inputVecLen()
+			super(Input, self).__init__(parent)
+		def _forwardImplementation(self, inbuf, outbuf):
+			super(Input, self)._forwardImplementation(inbuf, outbuf)
+			levelInputs = [None] * self.parent.levelCount
+			vecOffset = 0
+			for level in xrange(0, self.parent.levelCount - 1):
+				newVecOffset = vecOffset + self.parent.inputVecLenOfLevel(level)
+				levelInputs[level] = self.parent.vecToId(inbuf[vecOffset:newVecOffset])
+				vecOffset = newVecOffset
+			for level in xrange(0, self.parent.levelCount - 1):
+				if not self.parent.selectObjById(level, levelInputs[level]):
+					# it means the objId is invalid
+					# just ignore the rest
+					break
+	# Output is activated through updateLevelOutput
+	class Output(NeuralInterface.Output):
+		def __init__(self, parent):
+			self.dim = parent.outputVecLen()
+			super(Output, self).__init__(parent)
+	class LevelRepr:
+		objList = []
+		objDict = {} # id(obj) -> objList index
+		curObj = None
+		curObjIndex = 0
+		def reset(self, newObjList):
+			self.objList = newObjList
+			self.objDict = dict(map(lambda (index,obj): (id(obj),index), enumerate(newObjList)))
+			self.curObj = newObjList and newObjList[0] or None
+			self.curObjIndex = 0
+		def asOutputVec(self, objToVec, additionalInfoFunc):
+			leftObj = (self.curObjIndex > 0) and self.objList[self.curObjIndex-1] or None
+			rightObj = (self.curObjIndex+1 < len(self.objList)) and self.objList[self.curObjIndex+1] or None
+			leftObjVec = objToVec(leftObj)
+			curObjVec = objToVec(self.curObj)
+			rightObjVec = objToVec(rightObj)
+			additionalInfo = additionalInfoFunc(self.curObj)
+			return leftObjVec + curObjVec + rightObjVec + additionalInfo
+	def __init__(self, topLevelList, childsFuncs, additionalInfoFuncs):
+		self.topLevelList = topLevelList
+		self.childsFuncs = childsFuncs # list(obj -> list(obj))
+		self.levelCount = len(childsFuncs) + 1
+		self.additionalInfoFuncs = additionalInfoFuncs or ([lambda _:()] * self.levelCount)
+		self.levels = map(lambda _: LevelRepr(), [None] * self.levelCount)
+		super(GenericNeuralInterface, self).__init__()
+		self.resetLevel(0)
+
+	def inputVecLenOfLevel(self, level): return self.IdVecLen
+	def inputVecLen(self): return sum(map(self.inputVecLenOfLevel, range(0,self.levelCount-1)))
+	def outputVecLenOfLevel(self, level): return 3 * self.IdVecLen + len(self.additionalInfoFuncs[level](None))
+	def outputVecLen(self): return sum(map(self.outputVecLenOfLevel, range(0,self.levelCount-1)))
+
+	def updateLevelOutput(self, level):
+		outVec = self.levels[level].asOutputVec(self.objToVec, self.additionalInfoFuncs[level])
+		self.output.activate(outVec)
+	def resetLevel(self, level):
+		if level == 0: newObjList = self.topLevelList
+		else:
+			parentObj = self.levels[level-1].curObj
+			if parentObj is None: newObjList = []
+			else: newObjList = self.childsFuncs[level-1](parentObj)
+		self.levels[level].reset(newObjList)
+		self.updateLevelOutput(level)
+		if level+1 < len(self.levels):
+			self.resetLevel(level + 1)
+	def selectObjById(self, level, objId):
+		if objId == id(self.levels[level].curObj): return True
+		if objId in self.levels[level].objDict:
+			self.levels[level].curObjIndex = idx = self.levels[level].objDict[objId]
+			self.levels[level].curObj = self.levels[level].objList[idx]
+			self.updateLevelOutput(level)
+			if level+1 < len(self.levels):
+				self.resetLevel(level + 1)
+			return True
+		return False
+
+
 class ProgNeuralInterface(NeuralInterface):
+	# in:
+	#  id(prog) or 0
+	#  id(node) or 0
+	#  id((check,node)) or 0
+	# out:
+	#  next id(prog)
+	#  next id(node)
+	#  next id((check,node))
 	class Input(NeuralInterface.Input):
 		dim = 10
 		def _forwardImplementation(self, inbuf, outbuf):
 			super(Input, self)._forwardImplementation(inbuf, outbuf)
-			
+
 	class Output(NeuralInterface.Output):
 		dim = 10
+
 	def __init__(self, progPool):
 		NeuralInterface.__init__(self)
+		def childsForProg(prog): return prog
 		self.progPool = dict(map(lambda prog: (id(prog), prog), progPool))
 		self.nodes = {}
 		for i,prog in self.progPool.iteritems():
