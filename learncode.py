@@ -49,10 +49,10 @@ class Program:
 			@classmethod
 			def Random(cls, rndContext):
 				r = random.random()
-				if r <= 0.2: return Action()
-				elif r <= 0.7: return PrimitiveAction.Random(rndContext)
-				elif len(rndContext.progPool) == 0: return Action()
-				return CallAction.Random(rndContext)
+				if r <= 0.2: return cls()
+				elif r <= 0.7: return Program.Node.PrimitiveAction.Random(rndContext)
+				elif len(rndContext.progPool) == 0: return cls()
+				return Program.Node.CallAction.Random(rndContext)
 		class PrimitiveAction(Action):
 			def __init__(self):
 				self.primitive = 0
@@ -93,7 +93,7 @@ class Program:
 			def Random(cls, rndContext):
 				action = cls()
 				action.prog = random.choice(rndContext.progPool)
-				action.context = random.randint(0, rndContext.ProgRandomMaxLocalVars)
+				action.context = MemoryBackend.RandomConstInt()
 				return action
 			def execute(self, memory, contextSubject):
 				newContextSubject = memory.get(contextSubject, self.context)
@@ -104,7 +104,7 @@ class Program:
 			# whereby check is attrib and it checks
 			# if attrib == 0 or (subject,attrib) != 0
 			# whereby subject is current context
-			self.action = Action()
+			self.action = self.Action()
 
 		def uninit(self):
 			if getattr(self, "uniniting", False): return
@@ -116,7 +116,7 @@ class Program:
 		@classmethod
 		def Random(cls, rndContext):
 			node = cls()
-			node.action = Action.Random(rndContext)
+			node.action = cls.Action.Random(rndContext)
 			return node
 		
 	def __init__(self):
@@ -141,11 +141,11 @@ class Program:
 		
 	def randomize(self, rndContext):
 		N = random.randint(1, 10)
-		nodes = map(lambda _: Node.Random(rndContext), [None] * N)
+		nodes = map(lambda _: self.Node.Random(rndContext), [None] * N)
 		for _ in xrange(random.randint(1, 10)):
 			i = random.randint(0, N-1)
 			j = random.randint(0, N-1)
-			checkAttrib = random.randint(0, cls.ProgRandomMaxLocalVars)
+			checkAttrib = MemoryBackend.RandomConstInt()
 			nodes[i].edges.append((checkAttrib,nodes[j]))
 		for i in xrange(N-1):
 			nodes[i].edges.append((None,nodes[i+1]))
@@ -325,11 +325,11 @@ class GenericNeuralInterface(NeuralInterface):
 			super(Input, self)._forwardImplementation(inbuf, outbuf)
 			levelInputs = [None] * self.parent.levelCount
 			vecOffset = 0
-			for level in xrange(0, self.parent.levelCount - 1):
+			for level in xrange(self.parent.levelCount):
 				newVecOffset = vecOffset + self.parent.inputVecLenOfLevel(level)
 				levelInputs[level] = self.parent.vecToId(inbuf[vecOffset:newVecOffset])
 				vecOffset = newVecOffset
-			for level in xrange(0, self.parent.levelCount - 1):
+			for level in xrange(self.parent.levelCount):
 				if not self.parent.selectObjById(level, levelInputs[level]):
 					# it means the objId is invalid
 					# just ignore the rest
@@ -370,9 +370,9 @@ class GenericNeuralInterface(NeuralInterface):
 		self.resetLevel(0)
 
 	def inputVecLenOfLevel(self, level): return self.IdVecLen
-	def inputVecLen(self): return sum(map(self.inputVecLenOfLevel, range(0,self.levelCount-1)))
+	def inputVecLen(self): return sum(map(self.inputVecLenOfLevel, range(self.levelCount)))
 	def outputVecLenOfLevel(self, level): return 3 * self.IdVecLen + len(self.additionalInfoFuncs[level](None))
-	def outputVecLen(self): return sum(map(self.outputVecLenOfLevel, range(0,self.levelCount-1)))
+	def outputVecLen(self): return sum(map(self.outputVecLenOfLevel, range(self.levelCount)))
 
 	def updateLevelOutput(self, level):
 		outVec = self.levels[level].asOutputVec(self.objToVec, self.additionalInfoFuncs[level])
