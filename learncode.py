@@ -176,8 +176,22 @@ class Program:
 					break
 			node = nextnode
 
-	def allNodes(self):pass
-
+	def allNodes(self):
+		nodeSet = set()
+		nodeList = []
+		def addNode(node):
+			if node is None: return
+			if node not in nodeSet:
+				nodeSet.add(node)
+				nodeList.append(node)
+		addNode(self.startnode)
+		i = 0
+		while i < len(nodeList):
+			for check, node in sorted(nodeList[i].edges):
+				addNode(node)
+			i += 1
+		return nodeList
+	
 class MemoryBackend:
 	ConstZero = 0
 	ConstAttribIs = 2**4 + 1
@@ -386,9 +400,13 @@ class GenericNeuralInterface(NeuralInterface):
 
 
 class ProgNeuralInterface(GenericNeuralInterface):
-	def childsOfProg(self, prog): return None
-	def childsOfNode(self, node): return None
-	def nodeEdgeInfo(self, nodeEdge): return None
+	def childsOfProg(self, prog): return prog.allNodes()
+	def childsOfNode(self, node): return sorted(node.edges)
+	def nodeEdgeInfo(self, nodeEdge):
+		if nodeEdge is None: return (0,) * (ObjectDim + self.IdVecLen)
+		check, nextNode = nodeEdge
+		assert type(check) is int # check is an object-int of MemoryBackend
+		return _numToBinaryVec(check, ObjectDim) + self.objToVec(nextNode)
 	def __init__(self, progPool):
 		self.progPool = progPool
 		GenericNeuralInterface.__init__(self,
