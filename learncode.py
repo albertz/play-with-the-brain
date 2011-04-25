@@ -271,12 +271,25 @@ class NeuralInterface:
 		def __init__(self, parent, **kwargs):
 			LinearLayer.__init__(self, self.dim, **kwargs)
 			self.parent = parent
+		def update(self): pass
 	Input = IO
 	Output = IO
+	DummyIO = IO
 	def __init__(self):
 		self.input = self.Input(self)
 		self.output = self.Output(self)
-	
+	def update(self): self.output.update()
+
+class OutputOnlyNeuralInterface(NeuralInterface):
+	Input = NeuralInterface.DummyIO
+	class Output(NeuralInterface.Output):
+		def __init__(self, parent):
+			self.dim = parent.outdim
+			NeuralInterface.Output.__init__(self, parent)
+	def __init__(self, outdim):
+		self.outdim = outdim
+		NeuralInterface.__init__(self)
+
 class MemoryNeuralInterface(NeuralInterface):
 	class Input(NeuralInterface.Input):
 		dim = ActionDim
@@ -307,22 +320,22 @@ class GenericNeuralInterface(NeuralInterface):
 		if id is None: id = 0
 		v = _numToBinaryVec(id, cls.IdVecLen)
 		v = map(float, v)
-		return v
+		return tuple(v)
 	@classmethod
 	def vecToId(cls, v):
 		id = _numFromBinaryVec(v)
 		return id
 	@classmethod
 	def objToVec(cls, obj):
-		if obj is None: return idToVec(None)
-		else: return idToVec(id(obj))
+		if obj is None: return cls.idToVec(None)
+		else: return cls.idToVec(id(obj))
 	
 	class Input(NeuralInterface.Input):
 		def __init__(self, parent):
 			self.dim = parent.inputVecLen()
-			super(Input, self).__init__(parent)
+			NeuralInterface.Input.__init__(self, parent)
 		def _forwardImplementation(self, inbuf, outbuf):
-			super(Input, self)._forwardImplementation(inbuf, outbuf)
+			NeuralInterface.Input._forwardImplementation(self, inbuf, outbuf)
 			levelInputs = [None] * self.parent.levelCount
 			vecOffset = 0
 			for level in xrange(self.parent.levelCount):
@@ -334,11 +347,12 @@ class GenericNeuralInterface(NeuralInterface):
 					# it means the objId is invalid
 					# just ignore the rest
 					break
+			self.parent.update()
 	# Output is activated through updateLevelOutput
 	class Output(NeuralInterface.Output):
 		def __init__(self, parent):
 			self.dim = parent.outputVecLen()
-			super(Output, self).__init__(parent)
+			NeuralInterface.Output.__init__(self, parent)
 	class LevelRepr:
 		objList = []
 		objDict = {} # id(obj) -> objList index
@@ -365,17 +379,20 @@ class GenericNeuralInterface(NeuralInterface):
 		assert len(additionalInfoFuncs) == self.levelCount
 		additionalInfoFuncs = map(lambda f: (f or (lambda _:())), additionalInfoFuncs)
 		self.additionalInfoFuncs = additionalInfoFuncs
-		self.levels = map(lambda _: LevelRepr(), [None] * self.levelCount)
-		super(GenericNeuralInterface, self).__init__()
+		self.levels = map(lambda _: self.LevelRepr(), [None] * self.levelCount)
+		NeuralInterface.__init__(self)
 		self.resetLevel(0)
+		self.update()
 
 	def inputVecLenOfLevel(self, level): return self.IdVecLen
 	def inputVecLen(self): return sum(map(self.inputVecLenOfLevel, range(self.levelCount)))
 	def outputVecLenOfLevel(self, level): return 3 * self.IdVecLen + len(self.additionalInfoFuncs[level](None))
 	def outputVecLen(self): return sum(map(self.outputVecLenOfLevel, range(self.levelCount)))
 
-	def updateLevelOutput(self, level):
-		outVec = self.levels[level].asOutputVec(self.objToVec, self.additionalInfoFuncs[level])
+	def update(self):
+		outVec = ()
+		for level in xrange(self.levelCount):
+			outVec += self.levels[level].asOutputVec(self.objToVec, self.additionalInfoFuncs[level])
 		self.output.activate(outVec)
 	def resetLevel(self, level):
 		if level == 0: newObjList = self.topLevelList
@@ -384,7 +401,6 @@ class GenericNeuralInterface(NeuralInterface):
 			if parentObj is None: newObjList = []
 			else: newObjList = self.childsFuncs[level-1](parentObj)
 		self.levels[level].reset(newObjList)
-		self.updateLevelOutput(level)
 		if level+1 < len(self.levels):
 			self.resetLevel(level + 1)
 	def selectObjById(self, level, objId):
@@ -392,7 +408,6 @@ class GenericNeuralInterface(NeuralInterface):
 		if objId in self.levels[level].objDict:
 			self.levels[level].curObjIndex = idx = self.levels[level].objDict[objId]
 			self.levels[level].curObj = self.levels[level].objList[idx]
-			self.updateLevelOutput(level)
 			if level+1 < len(self.levels):
 				self.resetLevel(level + 1)
 			return True
@@ -416,11 +431,35 @@ class ProgNeuralInterface(GenericNeuralInterface):
 		    )
 
 class LearnCodeTask:
-	Prog = None
-	input = [Prog]
-	interfaces = [MemoryNeuralInterface, ProgNeuralInterface]
-	output = None # ....
-	
+	class TaskDefinition:
+		dim = 0
+		def asOutputVec(self): return ()
+	class TaskInput(OutputOnlyNeuralInterface):
+		def __init__(self, taskDef):
+			self.taskDef = taskDef
+			OutputOnlyNeuralInterface.__init__(self, taskDef.dim)
+		def update(self):
+			self.output.activate(self.taskDef.asOutputVec())
+	taskDef = TaskDefinition
+	memory = MemoryBackend
+	progPool = []
+	interfaces = [MemoryNeuralInterface, ProgNeuralInterface, TaskInput]
+
+	def autoInitializer(self, clazz):
+		import inspect
+		if inspect.isclass(clazz):
+			if not hasattr(clazz, "__init__"): return clazz()
+			args = inspect.getargspec(clazz.__init__).args[1:] # first is 'self'
+		else:
+			args = inspect.getargspec(clazz).args
+		kwargs = dict(map(lambda a: (a,getattr(self,a)), args))
+		return clazz(**kwargs)
+
+	def __init__(self):
+		for a in ["taskDef", "memory"]: setattr(self, a, self.autoInitializer(getattr(self, a)))
+		self.interfaces = map(self.autoInitializer, self.interfaces)
+		
+
 class Run:
 	def __init__(self):
 		self.memory = MemoryBackend()
