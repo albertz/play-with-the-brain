@@ -432,17 +432,24 @@ class ProgNeuralInterface(GenericNeuralInterface):
 
 class LearnCodeTask:
 	class TaskDefinition:
-		dim = 0
-		def asOutputVec(self): return ()
+		dim = ProgNeuralInterface.IdVecLen
+		prog = None
+		progInput = None
+		def asOutputVec(self):
+			return ProgNeuralInterface.objToVec(self.prog)
+
 	class TaskInput(OutputOnlyNeuralInterface):
 		def __init__(self, taskDef):
 			self.taskDef = taskDef
 			OutputOnlyNeuralInterface.__init__(self, taskDef.dim)
 		def update(self):
 			self.output.activate(self.taskDef.asOutputVec())
+
 	taskDef = TaskDefinition
 	memory = MemoryBackend
-	progPool = []
+	progPool = None
+	progPoolContext = Program.RandomContext
+	curProgPoolBatch = []
 	interfaces = [MemoryNeuralInterface, ProgNeuralInterface, TaskInput]
 
 	def autoInitializer(self, clazz):
@@ -456,15 +463,46 @@ class LearnCodeTask:
 		return clazz(**kwargs)
 
 	def __init__(self):
-		for a in ["taskDef", "memory"]: setattr(self, a, self.autoInitializer(getattr(self, a)))
+		for a in ["taskDef", "memory", "progPoolContext"]: setattr(self, a, self.autoInitializer(getattr(self, a)))
+		self.progPool = self.progPoolContext.progPool
 		self.interfaces = map(self.autoInitializer, self.interfaces)
+
+	def generateProgsOnTop(self):
+		self.curProgPoolBatch = self.progPoolContext.generate(N=10)
+
+	def connectWithNetwork(self, net, inputLayer, outputLayer, inConnType = bc.FullConnection, outConnType = bc.FullConnection):
+		for intf in self.interfaces:
+			net.addOutputModule(intf.input) # the interfaces input is the NNs output
+			net.addConnection(outConnType(outputLayer, intf.input))
+			net.addModule(intf.output) # the interfaces output is the NNs input
+									# dont treat as input module though because we _dont_ push the input through net.activate()
+			net.addConnection(inConnType(intf.output, inputLayer))
+
+	def setTaskDef(self):
+		self.taskDef.prog = self.curProgPoolBatch[0]
 		
+
+import pybrain
+import pybrain.tools.shortcuts as bs
+from pybrain.structure.modules import BiasUnit, SigmoidLayer, LinearLayer, LSTMLayer, SoftmaxLayer
+import pybrain.structure.networks as bn
+import pybrain.structure.connections as bc
+import pybrain.datasets.sequential as bd
+
 
 class Run:
 	def __init__(self):
-		self.memory = MemoryBackend()
-		self.progPool = []
-		self.memoryActivation = (0,) * MemoryActivationDim
+		task = LearnCodeTask()
+
+		nn = bn.RecurrentNetwork()
+		nn.addModule(LSTMLayer(6, name="hidden"))
+		nn.addRecurrentConnection(bc.FullConnection(nn["hidden"], nn["hidden"], name="c3"))
+		task.connectWithNetwork(nn, nn["hidden"], nn["hidden"])
+		nn.sortModules()
+
+		self.task = task
+		self.net = nn
+
 	def executeNetOut(self, netOut):
 		action = netOutToAction(netOut)
 		memoryOut = action(self.memory)
