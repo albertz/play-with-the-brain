@@ -495,18 +495,16 @@ class Run:
 		task = LearnCodeTask()
 
 		nn = bn.RecurrentNetwork()
-		nn.addModule(LSTMLayer(6, name="hidden"))
-		nn.addRecurrentConnection(bc.FullConnection(nn["hidden"], nn["hidden"], name="c3"))
-		task.connectWithNetwork(nn, nn["hidden"], nn["hidden"])
+		nn.addModule(LSTMLayer(100, name="hidden1"))
+		nn.addModule(LSTMLayer(100, name="hidden2"))
+		nn.addRecurrentConnection(bc.FullConnection(nn["hidden1"], nn["hidden2"]))
+		nn.addRecurrentConnection(bc.FullConnection(nn["hidden2"], nn["hidden1"]))
+		task.connectWithNetwork(nn, nn["hidden1"], nn["hidden2"])
 		nn.sortModules()
 
 		self.task = task
 		self.net = nn
 
-	def executeNetOut(self, netOut):
-		action = netOutToAction(netOut)
-		memoryOut = action(self.memory)
-		self.memoryActivation = memoryOutToNetIn(*memoryOut)
 	def learnProg(self, prog):
 		# show how to iterate through whole prog
 		# train to do the same steps in NN
